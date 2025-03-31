@@ -28,7 +28,7 @@ def get_realtime_data():
         "astrology_data": get_astrology_data()
     }
 
-# Get real-time market data
+# Get real-time market data with proper error handling
 def get_market_data():
     tickers = {
         "S&P 500": "^GSPC",
@@ -45,11 +45,14 @@ def get_market_data():
     for name, ticker in tickers.items():
         try:
             data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-            if not data.empty:
+            if not data.empty and len(data) > 1:
                 data = data.reset_index()
+                current_price = float(data['Close'].iloc[-1])
+                prev_price = float(data['Close'].iloc[-2])
+                
                 market_data[name] = {
-                    "current": round(data['Close'].iloc[-1], 2),
-                    "change": round((data['Close'].iloc[-1]/data['Close'].iloc[-2]-1)*100, 2),
+                    "current": current_price,
+                    "change": ((current_price / prev_price) - 1) * 100,
                     "chart_data": data[['Date', 'Close']]
                 }
         except Exception as e:
@@ -57,11 +60,12 @@ def get_market_data():
     
     return market_data
 
-# Get real-time astrology data from AstroSeek
+# Get real-time astrology data from AstroSeek with better error handling
 def get_astrology_data():
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(ASTROSEEK_URL, headers=headers)
+        response = requests.get(ASTROSEEK_URL, headers=headers, timeout=10)
+        response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Extract current planetary positions
@@ -101,48 +105,74 @@ def get_astrology_data():
         st.error(f"Error fetching astrology data: {e}")
         return None
 
-# Display market charts
+# Display market charts with proper number formatting
 def show_market_charts(market_data):
+    if not market_data:
+        st.warning("No market data available")
+        return
+    
     st.subheader("Real-Time Market Performance")
     cols = st.columns(len(market_data))
     
     for idx, (name, data) in enumerate(market_data.items()):
         with cols[idx]:
-            st.metric(
-                label=name,
-                value=f"${data['current']:,}",
-                delta=f"{data['change']:.2f}%"
-            )
+            try:
+                # Format numbers appropriately based on magnitude
+                if abs(data['current']) >= 1000:
+                    value_str = f"${data['current']:,.2f}"
+                else:
+                    value_str = f"${data['current']:.4f}" if name == "Bitcoin" else f"${data['current']:.2f}"
+                
+                st.metric(
+                    label=name,
+                    value=value_str,
+                    delta=f"{data['change']:.2f}%"
+                )
+            except Exception as e:
+                st.error(f"Error displaying {name} metric: {e}")
     
     selected_market = st.selectbox("Select market to view chart:", list(market_data.keys()))
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=market_data[selected_market]["chart_data"]['Date'],
-        y=market_data[selected_market]["chart_data"]['Close'],
-        mode='lines',
-        name=selected_market
-    ))
-    fig.update_layout(
-        title=f"{selected_market} 30-Day Performance",
-        xaxis_title="Date",
-        yaxis_title="Price",
-        hovermode="x unified"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=market_data[selected_market]["chart_data"]['Date'],
+            y=market_data[selected_market]["chart_data"]['Close'],
+            mode='lines',
+            name=selected_market
+        ))
+        fig.update_layout(
+            title=f"{selected_market} 30-Day Performance",
+            xaxis_title="Date",
+            yaxis_title="Price",
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating chart: {e}")
 
-# Display astrology data
+# Display astrology data with better error handling
 def show_astrology_data(astrology_data):
+    if not astrology_data:
+        st.warning("No astrology data available")
+        return
+    
     st.subheader("Current Planetary Positions")
     
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.image(f"{ASTROSEEK_URL}-chart.gif?t={int(time.time())}",
-               caption="Live Planetary Positions", use_column_width=True)
+        try:
+            st.image(f"{ASTROSEEK_URL}-chart.gif?t={int(time.time())}",
+                   caption="Live Planetary Positions", use_column_width=True)
+        except Exception as e:
+            st.error(f"Error loading planetary chart: {e}")
     
     with col2:
-        st.dataframe(pd.DataFrame(astrology_data["planets"]), hide_index=True)
+        try:
+            st.dataframe(pd.DataFrame(astrology_data["planets"]), hide_index=True)
+        except Exception as e:
+            st.error(f"Error displaying planetary data: {e}")
         
         st.markdown("""
         **Interpretation Guide:**
@@ -152,23 +182,32 @@ def show_astrology_data(astrology_data):
         """)
     
     st.subheader("Active Planetary Aspects")
-    st.dataframe(pd.DataFrame(astrology_data["aspects"]), hide_index=True)
+    try:
+        st.dataframe(pd.DataFrame(astrology_data["aspects"]), hide_index=True)
+    except Exception as e:
+        st.error(f"Error displaying aspects: {e}")
     
-    st.image(f"{ASTROSEEK_URL}-aspects.gif?t={int(time.time())}",
-           caption="Current Planetary Aspects", use_column_width=True)
+    try:
+        st.image(f"{ASTROSEEK_URL}-aspects.gif?t={int(time.time())}",
+               caption="Current Planetary Aspects", use_column_width=True)
+    except Exception as e:
+        st.error(f"Error loading aspects chart: {e}")
 
-# Market-Astrology correlations
+# Market-Astrology correlations with better error handling
 def show_correlations():
     st.subheader("Real-Time Market-Astrology Correlations")
     
-    correlations = {
-        "Market": ["S&P 500", "Gold", "Oil", "Bitcoin", "Currencies"],
-        "Key Planet": ["Sun/Jupiter", "Moon/Venus", "Mars/Pluto", "Uranus", "Mercury"],
-        "Current Influence": ["Expansion", "Stability", "Volatility", "Innovation", "Communication"],
-        "Trading Strategy": ["Buy growth stocks", "Hold safe assets", "Trade carefully", "Speculate wisely", "Watch news"]
-    }
-    
-    st.dataframe(pd.DataFrame(correlations), hide_index=True)
+    try:
+        correlations = {
+            "Market": ["S&P 500", "Gold", "Oil", "Bitcoin", "Currencies"],
+            "Key Planet": ["Sun/Jupiter", "Moon/Venus", "Mars/Pluto", "Uranus", "Mercury"],
+            "Current Influence": ["Expansion", "Stability", "Volatility", "Innovation", "Communication"],
+            "Trading Strategy": ["Buy growth stocks", "Hold safe assets", "Trade carefully", "Speculate wisely", "Watch news"]
+        }
+        
+        st.dataframe(pd.DataFrame(correlations), hide_index=True)
+    except Exception as e:
+        st.error(f"Error displaying correlations: {e}")
     
     st.markdown("""
     **How to Use This Data:**
@@ -178,7 +217,7 @@ def show_correlations():
     4. Monitor aspect expiration dates for trend changes
     """)
 
-# Main app
+# Main app with comprehensive error handling
 def main():
     st.title("📡 Real-Time Financial Astrology Dashboard")
     st.markdown("""
@@ -186,23 +225,23 @@ def main():
     Data updates every 5 minutes.
     """)
     
-    # Get all data
-    data = get_realtime_data()
-    market_data = data["market_data"]
-    astrology_data = data["astrology_data"]
-    
-    if not market_data or not astrology_data:
-        st.error("Failed to load real-time data. Please try again later.")
-        return
-    
-    # Display last update time
-    last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.caption(f"Last updated: {last_update} (Refreshes every 5 minutes)")
-    
-    # Show main content
-    show_market_charts(market_data)
-    show_astrology_data(astrology_data)
-    show_correlations()
+    try:
+        # Get all data
+        data = get_realtime_data()
+        market_data = data.get("market_data", {})
+        astrology_data = data.get("astrology_data", {})
+        
+        # Display last update time
+        last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.caption(f"Last updated: {last_update} (Refreshes every 5 minutes)")
+        
+        # Show main content
+        show_market_charts(market_data)
+        show_astrology_data(astrology_data)
+        show_correlations()
+        
+    except Exception as e:
+        st.error(f"Application error: {e}")
     
     # Sidebar
     st.sidebar.title("Navigation")
@@ -215,20 +254,26 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.subheader("Current Highlights")
     
-    # Find strongest aspect
-    strongest_aspect = max(astrology_data["aspects"], key=lambda x: float(x["Orb"].split('°')[0]))
-    st.sidebar.markdown(f"""
-    **Strongest Aspect Today:**  
-    {strongest_aspect["Planets"]} ({strongest_aspect["Aspect"]})  
-    *{strongest_aspect["Effect"]}*
-    """)
-    
-    # Find top gaining market
-    top_market = max(market_data.items(), key=lambda x: x[1]["change"])
-    st.sidebar.markdown(f"""
-    **Top Performing Market:**  
-    {top_market[0]}: {top_market[1]["change"]:.2f}%
-    """)
+    try:
+        if astrology_data and astrology_data.get("aspects"):
+            # Find strongest aspect
+            strongest_aspect = max(astrology_data["aspects"], 
+                                 key=lambda x: float(x["Orb"].split('°')[0]) if x["Orb"].replace('.','',1).isdigit() else 0)
+            st.sidebar.markdown(f"""
+            **Strongest Aspect Today:**  
+            {strongest_aspect["Planets"]} ({strongest_aspect["Aspect"]})  
+            *{strongest_aspect["Effect"]}*
+            """)
+        
+        if market_data:
+            # Find top gaining market
+            top_market = max(market_data.items(), key=lambda x: x[1].get("change", 0))
+            st.sidebar.markdown(f"""
+            **Top Performing Market:**  
+            {top_market[0]}: {top_market[1].get('change', 0):.2f}%
+            """)
+    except Exception as e:
+        st.sidebar.error(f"Error generating highlights: {e}")
     
     st.sidebar.markdown("---")
     st.sidebar.warning("""
