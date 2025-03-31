@@ -5,3 +5,4 @@ plotly
 yfinance
 transformers
 TensorFlow
+tf-keras
