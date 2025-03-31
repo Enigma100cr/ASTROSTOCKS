@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 import plotly.express as px
 import yfinance as yf
@@ -65,11 +64,16 @@ def get_recent_market_data(tickers=["^GSPC", "GC=F", "CL=F", "BTC-USD"]):
     market_data = {}
     for ticker in tickers:
         try:
-            data = yf.download(ticker, start=start_date, end=end_date)
+            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
             if not data.empty and len(data) > 1:
-                # Reset index and ensure proper column names
+                # Reset index and handle columns properly
                 data = data.reset_index()
-                data.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+                
+                # Check if we have all expected columns
+                expected_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+                for col in expected_cols:
+                    if col not in data.columns:
+                        data[col] = None  # Add missing columns with None values
                 
                 market_data[ticker] = {
                     "current_price": round(data['Close'].iloc[-1], 2),
@@ -77,7 +81,7 @@ def get_recent_market_data(tickers=["^GSPC", "GC=F", "CL=F", "BTC-USD"]):
                     "chart_data": data[['Date', 'Close']].copy()
                 }
         except Exception as e:
-            st.error(f"Error fetching data for {ticker}: {e}")
+            st.error(f"Error fetching data for {ticker}: {str(e)}")
     
     return market_data
 
