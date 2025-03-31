@@ -57,7 +57,7 @@ ASTROLOGY_DATA = {
     ]
 }
 
-# Get recent market data
+# Get recent market data with error handling
 def get_recent_market_data(tickers=["^GSPC", "GC=F", "CL=F", "BTC-USD"]):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
@@ -66,18 +66,23 @@ def get_recent_market_data(tickers=["^GSPC", "GC=F", "CL=F", "BTC-USD"]):
     for ticker in tickers:
         try:
             data = yf.download(ticker, start=start_date, end=end_date)
-            if not data.empty:
+            if not data.empty and len(data) > 1:
+                # Ensure we have datetime index
+                data = data.reset_index()
+                if 'Date' not in data.columns:
+                    data['Date'] = data.index
+                
                 market_data[ticker] = {
                     "current_price": round(data['Close'].iloc[-1], 2),
                     "change_pct": round((data['Close'].iloc[-1]/data['Close'].iloc[-2]-1)*100, 2),
-                    "chart_data": data.reset_index()
+                    "chart_data": data[['Date', 'Close']].copy()
                 }
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {e}")
     
     return market_data
 
-# Generate AI response
+# Generate AI response with improved error handling
 def ask_astrology_ai(question, context=""):
     if not llm:
         return "AI service is currently unavailable."
@@ -98,11 +103,12 @@ def ask_astrology_ai(question, context=""):
             temperature=0.7,
             do_sample=True
         )
-        return response[0]['generated_text'].split("Detailed Answer:")[-1].strip()
+        generated_text = response[0]['generated_text']
+        return generated_text.split("Detailed Answer:")[-1].strip()
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error generating response: {str(e)}"
 
-# Main educational content
+# Main educational content with improved error handling
 def show_educational_content():
     st.title("📚 Financial Astrology Masterclass")
     
@@ -117,6 +123,7 @@ def show_educational_content():
         
         st.subheader("Market Performance Under Current Aspects")
         market_data = get_recent_market_data()
+        
         if market_data:
             for ticker, data in market_data.items():
                 st.metric(
@@ -124,8 +131,27 @@ def show_educational_content():
                     value=f"${data['current_price']}",
                     delta=f"{data['change_pct']}%"
                 )
-                fig = px.line(data["chart_data"], x="Date", y="Close", title=f"{ticker} Price")
-                st.plotly_chart(fig, use_container_width=True)
+                
+                try:
+                    # Ensure we have valid data for plotting
+                    if not data['chart_data'].empty and 'Date' in data['chart_data'].columns and 'Close' in data['chart_data'].columns:
+                        fig = px.line(
+                            data['chart_data'], 
+                            x="Date", 
+                            y="Close", 
+                            title=f"{ticker} Price",
+                            labels={'Close': 'Price ($)'}
+                        )
+                        fig.update_layout(
+                            xaxis_title="Date",
+                            yaxis_title="Price",
+                            hovermode="x unified"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning(f"Incomplete data for {ticker} chart")
+                except Exception as e:
+                    st.error(f"Error creating chart for {ticker}: {str(e)}")
     
     with col2:
         st.subheader("Sector-Planet Correlations")
@@ -148,7 +174,7 @@ def show_educational_content():
         }
         st.dataframe(pd.DataFrame(moon_phases), hide_index=True)
 
-# AI Chat interface
+# AI Chat interface with improved error handling
 def show_ai_chat():
     st.title("🔮 Financial Astrology Advisor")
     
@@ -170,22 +196,25 @@ def show_ai_chat():
             st.write(prompt)
         
         # Generate context from current astrological data
-        current_context = f"""
-        Current planetary positions: {ASTROLOGY_DATA['planetary_positions']}
-        Active aspects: {ASTROLOGY_DATA['aspects']}
-        Upcoming events: {ASTROLOGY_DATA['upcoming_events']}
-        """
+        current_context = {
+            "planetary_positions": ASTROLOGY_DATA["planetary_positions"],
+            "active_aspects": ASTROLOGY_DATA["aspects"],
+            "upcoming_events": ASTROLOGY_DATA["upcoming_events"]
+        }
         
         # Get AI response
         with st.chat_message("assistant"):
             with st.spinner("Consulting the stars..."):
-                response = ask_astrology_ai(prompt, current_context)
-                st.write(response)
-        
-        # Add AI response to chat history
-        st.session_state.chat_history.append({"role": "assistant", "content": response})
+                try:
+                    response = ask_astrology_ai(prompt, str(current_context))
+                    st.write(response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                except Exception as e:
+                    error_msg = f"Error generating response: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
 
-# Main app
+# Main app with improved error handling
 def main():
     st.sidebar.image("https://via.placeholder.com/200x50?text=AstroTrader+Pro", width=200)
     st.sidebar.title("Navigation")
@@ -219,30 +248,51 @@ def main():
     Not financial advice. Astrological market analysis is experimental.
     """)
     
-    if app_mode == "📊 Learn Financial Astrology":
-        show_educational_content()
-    elif app_mode == "💬 Consult Astro Advisor":
-        show_ai_chat()
-    else:
-        st.title("📆 Astrological Trading Calendar")
-        
-        # Create calendar view
-        calendar_data = []
-        start_date = datetime.now()
-        for i in range(30):  # Next 30 days
-            date = start_date + timedelta(days=i)
-            events = [e for e in ASTROLOGY_DATA["upcoming_events"] if e["Date"] == date.strftime("%Y-%m-%d")]
+    try:
+        if app_mode == "📊 Learn Financial Astrology":
+            show_educational_content()
+        elif app_mode == "💬 Consult Astro Advisor":
+            show_ai_chat()
+        else:
+            st.title("📆 Astrological Trading Calendar")
             
-            calendar_data.append({
-                "Date": date.strftime("%Y-%m-%d"),
-                "Day": date.strftime("%A"),
-                "Moon Phase": "🌑" if i%7 == 0 else "🌓" if i%7 == 2 else "🌕" if i%7 == 4 else "🌗",
-                "Major Aspects": "\n".join([e["Aspect"] for e in ASTROLOGY_DATA["aspects"] if e["Duration"].split("-")[0] <= date.strftime("%b %d") <= e["Duration"].split("-")[1]]),
-                "Events": "\n".join([e["Event"] for e in events]),
-                "Trading Outlook": "Bullish" if "trine" in str([e["Aspect"] for e in ASTROLOGY_DATA["aspects"]]) else "Neutral"
-            })
-        
-        st.dataframe(pd.DataFrame(calendar_data), hide_index=True, height=800)
+            # Create calendar view with error handling
+            try:
+                calendar_data = []
+                start_date = datetime.now()
+                for i in range(30):  # Next 30 days
+                    date = start_date + timedelta(days=i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    
+                    events = [e for e in ASTROLOGY_DATA["upcoming_events"] if e["Date"] == date_str]
+                    
+                    # Get aspects for this date
+                    aspects_today = []
+                    for aspect in ASTROLOGY_DATA["aspects"]:
+                        if "-" in aspect.get("Duration", ""):
+                            start, end = aspect["Duration"].split("-")
+                            try:
+                                start_date_aspect = datetime.strptime(f"{start} 2023", "%b %d %Y")
+                                end_date_aspect = datetime.strptime(f"{end} 2023", "%b %d %Y")
+                                if start_date_aspect <= date <= end_date_aspect:
+                                    aspects_today.append(aspect["Aspect"])
+                            except:
+                                continue
+                    
+                    calendar_data.append({
+                        "Date": date_str,
+                        "Day": date.strftime("%A"),
+                        "Moon Phase": "🌑" if i%7 == 0 else "🌓" if i%7 == 2 else "🌕" if i%7 == 4 else "🌗",
+                        "Major Aspects": "\n".join(aspects_today),
+                        "Events": "\n".join([e["Event"] for e in events]),
+                        "Trading Outlook": "Bullish" if any("trine" in a.lower() for a in aspects_today) else "Neutral"
+                    })
+                
+                st.dataframe(pd.DataFrame(calendar_data), hide_index=True, height=800)
+            except Exception as e:
+                st.error(f"Error generating calendar: {str(e)}")
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
     main()
