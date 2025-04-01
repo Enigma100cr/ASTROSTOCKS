@@ -1,285 +1,247 @@
 import streamlit as st
-import pandas as pd
-import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
-import time
 
 # Set page configuration
 st.set_page_config(
-    page_title="Real-Time Financial Astrology",
+    page_title="Advanced Financial Astrology Analyzer",
     page_icon="🔮",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Constants
-REFRESH_INTERVAL = 300  # 5 minutes in seconds
-ASTROSEEK_URL = "https://www.astro-seek.com/current-planets-astrology-transits"
-MARKETWATCH_URL = "https://www.marketwatch.com/investing"
-
-# Cache real-time data with expiration
-@st.cache_data(ttl=REFRESH_INTERVAL)
-def get_realtime_data():
-    return {
-        "market_data": get_market_data(),
-        "astrology_data": get_astrology_data()
+# Financial Astrology Principles (Your Specifications)
+PRINCIPLES = {
+    "planetary_rulers": {
+        "Sun": {"Sectors": ["Government", "Gold"], "Effects": ["Confidence", "Leadership"]},
+        "Moon": {"Sectors": ["Real Estate", "Agriculture"], "Effects": ["Emotions", "Liquidity"]},
+        "Mercury": {"Sectors": ["Technology", "Communication"], "Effects": ["Information", "Volatility"]},
+        "Venus": {"Sectors": ["Luxury", "Arts"], "Effects": ["Value", "Harmony"]},
+        "Mars": {"Sectors": ["Energy", "Defense"], "Effects": ["Aggression", "Risk"]},
+        "Jupiter": {"Sectors": ["Banking", "Expansion"], "Effects": ["Growth", "Optimism"]},
+        "Saturn": {"Sectors": ["Mining", "Construction"], "Effects": ["Restriction", "Structure"]},
+        "Uranus": {"Sectors": ["Innovation", "Cryptocurrency"], "Effects": ["Disruption", "Sudden Changes"]},
+        "Neptune": {"Sectors": ["Pharma", "Spirituality"], "Effects": ["Illusion", "Speculation"]},
+        "Pluto": {"Sectors": ["Power", "Transformation"], "Effects": ["Control", "Rebirth"]}
+    },
+    "aspect_interpretations": {
+        "Conjunction": "Intensified focus in the combined areas",
+        "Sextile": "Opportunities through the connected sectors",
+        "Square": "Challenges requiring resolution between areas",
+        "Trine": "Natural flow and harmony between sectors",
+        "Opposition": "Polarization needing balance between forces"
+    },
+    "house_meanings": {
+        "2nd": "Personal finances, currencies, values",
+        "5th": "Speculation, entertainment, creativity",
+        "8th": "Joint finances, crises, transformation",
+        "10th": "Government, corporations, public image",
+        "11th": "Technology, social networks, future trends"
     }
+}
 
-# Get real-time market data with proper error handling
-def get_market_data():
-    tickers = {
-        "S&P 500": "^GSPC",
-        "Gold": "GC=F",
-        "Crude Oil": "CL=F",
-        "Bitcoin": "BTC-USD",
-        "USD/INR": "INR=X"
-    }
-    
-    market_data = {}
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
-    
-    for name, ticker in tickers.items():
-        try:
-            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-            if not data.empty and len(data) > 1:
-                data = data.reset_index()
-                current_price = float(data['Close'].iloc[-1])
-                prev_price = float(data['Close'].iloc[-2])
-                
-                market_data[name] = {
-                    "current": current_price,
-                    "change": ((current_price / prev_price) - 1) * 100,
-                    "chart_data": data[['Date', 'Close']]
-                }
-        except Exception as e:
-            st.error(f"Error fetching {name} data: {e}")
-    
-    return market_data
+# Advanced Analysis Functions
+def analyze_angular_houses(chart_data):
+    """Analyze planets in angular houses (1st, 4th, 7th, 10th)"""
+    angular_planets = []
+    for planet in chart_data["planets"]:
+        if planet["house"] in ["1st", "4th", "7th", "10th"]:
+            angular_planets.append({
+                "Planet": planet["name"],
+                "House": planet["house"],
+                "Influence": "Strong immediate impact on corresponding sectors",
+                "Duration": "Short-term (days/weeks)"
+            })
+    return pd.DataFrame(angular_planets)
 
-# Get real-time astrology data from AstroSeek with better error handling
-def get_astrology_data():
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(ASTROSEEK_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract current planetary positions
-        planets = []
-        planets_table = soup.find('table', {'class': 'table_planets'})
-        if planets_table:
-            for row in planets_table.find_all('tr')[1:11]:  # First 10 planets
-                cols = row.find_all('td')
-                if len(cols) >= 4:
-                    planets.append({
-                        "Planet": cols[0].text.strip(),
-                        "Sign": cols[1].text.strip(),
-                        "Degree": cols[2].text.strip(),
-                        "Speed": cols[3].text.strip()
-                    })
-        
-        # Extract current aspects
-        aspects = []
-        aspects_table = soup.find('table', {'class': 'table_aspects'})
-        if aspects_table:
-            for row in aspects_table.find_all('tr')[1:6]:  # First 5 aspects
-                cols = row.find_all('td')
-                if len(cols) >= 4:
-                    aspects.append({
-                        "Planets": cols[0].text.strip(),
-                        "Aspect": cols[1].text.strip(),
-                        "Orb": cols[2].text.strip(),
-                        "Effect": cols[3].text.strip()[:50] + "..."  # Truncate long text
-                    })
-        
-        return {
-            "planets": planets,
-            "aspects": aspects,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-    except Exception as e:
-        st.error(f"Error fetching astrology data: {e}")
-        return None
+def analyze_aspect_patterns(aspects):
+    """Identify significant aspect patterns"""
+    patterns = []
+    for aspect in aspects:
+        if float(aspect["orb"].replace("°", "")) < 3:  # Tight orb
+            patterns.append({
+                "Planets": aspect["planets"],
+                "Aspect": aspect["type"],
+                "Orb": aspect["orb"],
+                "Financial Meaning": PRINCIPLES["aspect_interpretations"][aspect["type"]],
+                "Impact Duration": "Weeks" if "Sun" in aspect["planets"] or "Moon" in aspect["planets"] else "Months"
+            })
+    return pd.DataFrame(patterns)
 
-# Display market charts with proper number formatting
-def show_market_charts(market_data):
-    if not market_data:
-        st.warning("No market data available")
-        return
+def calculate_sector_strengths(chart_data):
+    """Calculate sector strengths based on planetary positions"""
+    sectors = {}
+    for planet in chart_data["planets"]:
+        for sector in PRINCIPLES["planetary_rulers"][planet["name"]]["Sectors"]:
+            if sector not in sectors:
+                sectors[sector] = 0
+            # Add strength based on house position and dignity
+            strength = 1
+            if planet["house"] in ["1st", "10th"]:
+                strength *= 2
+            if planet["sign"] in ["Taurus", "Leo", "Scorpio", "Aquarius"]:  # Fixed signs = stability
+                strength *= 1.5
+            sectors[sector] += strength
     
-    st.subheader("Real-Time Market Performance")
-    cols = st.columns(len(market_data))
-    
-    for idx, (name, data) in enumerate(market_data.items()):
-        with cols[idx]:
-            try:
-                # Format numbers appropriately based on magnitude
-                if abs(data['current']) >= 1000:
-                    value_str = f"${data['current']:,.2f}"
-                else:
-                    value_str = f"${data['current']:.4f}" if name == "Bitcoin" else f"${data['current']:.2f}"
-                
-                st.metric(
-                    label=name,
-                    value=value_str,
-                    delta=f"{data['change']:.2f}%"
-                )
-            except Exception as e:
-                st.error(f"Error displaying {name} metric: {e}")
-    
-    selected_market = st.selectbox("Select market to view chart:", list(market_data.keys()))
-    
-    try:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=market_data[selected_market]["chart_data"]['Date'],
-            y=market_data[selected_market]["chart_data"]['Close'],
-            mode='lines',
-            name=selected_market
-        ))
-        fig.update_layout(
-            title=f"{selected_market} 30-Day Performance",
-            xaxis_title="Date",
-            yaxis_title="Price",
-            hovermode="x unified"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error creating chart: {e}")
+    # Normalize and sort
+    max_strength = max(sectors.values()) if sectors else 1
+    return sorted(
+        [{"Sector": k, "Strength": f"{v/max_strength:.0%}"} 
+         for k, v in sectors.items()],
+        key=lambda x: x["Strength"],
+        reverse=True
+    )
 
-# Display astrology data with better error handling
-def show_astrology_data(astrology_data):
-    if not astrology_data:
-        st.warning("No astrology data available")
-        return
+# Mock Chart Data Generator (Replace with real chart data)
+def generate_sample_chart():
+    """Generate a sample natal chart for demonstration"""
+    planets = [
+        {"name": "Sun", "sign": "Leo", "house": "10th", "dignity": "Domicile"},
+        {"name": "Moon", "sign": "Cancer", "house": "4th", "dignity": "Domicile"},
+        {"name": "Mercury", "sign": "Virgo", "house": "11th", "dignity": "Domicile"},
+        {"name": "Venus", "sign": "Libra", "house": "12th", "dignity": "Domicile"},
+        {"name": "Mars", "sign": "Scorpio", "house": "2nd", "dignity": "Domicile"},
+        {"name": "Jupiter", "sign": "Pisces", "house": "5th", "dignity": "Domicile"},
+        {"name": "Saturn", "sign": "Aquarius", "house": "5th", "dignity": "Domicile"},
+        {"name": "Uranus", "sign": "Taurus", "house": "8th", "dignity": "Detriment"},
+        {"name": "Neptune", "sign": "Pisces", "house": "6th", "dignity": "Domicile"},
+        {"name": "Pluto", "sign": "Capricorn", "house": "4th", "dignity": "Exalted"}
+    ]
     
-    st.subheader("Current Planetary Positions")
+    aspects = [
+        {"planets": "Sun conjunct Jupiter", "type": "Conjunction", "orb": "0°32'"},
+        {"planets": "Moon square Pluto", "type": "Square", "orb": "2°15'"},
+        {"planets": "Mercury trine Uranus", "type": "Trine", "orb": "1°47'"},
+        {"planets": "Venus sextile Mars", "type": "Sextile", "orb": "3°01'"},
+        {"planets": "Saturn opposite Uranus", "type": "Opposition", "orb": "5°22'"}
+    ]
     
-    col1, col2 = st.columns([1, 2])
+    return {"planets": planets, "aspects": aspects}
+
+# Visualization Functions
+def create_radar_chart(sector_strengths):
+    """Create radar chart of sector strengths"""
+    categories = [s["Sector"] for s in sector_strengths]
+    values = [float(s["Strength"].strip("%")) for s in sector_strengths]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=categories,
+        fill='toself',
+        name='Sector Strength'
+    ))
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]
+            )),
+        showlegend=False,
+        title="Financial Sector Strengths"
+    )
+    return fig
+
+# Main Application
+def main():
+    st.title("Advanced Financial Natal Chart Analysis")
+    st.markdown("""
+    ### Applying Classical Financial Astrology Principles
+    """)
+    
+    # Generate or load natal chart data
+    chart_data = generate_sample_chart()
+    
+    # Analysis Section
+    st.header("Core Chart Analysis")
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        try:
-            st.image(f"{ASTROSEEK_URL}-chart.gif?t={int(time.time())}",
-                   caption="Live Planetary Positions", use_column_width=True)
-        except Exception as e:
-            st.error(f"Error loading planetary chart: {e}")
+        st.subheader("Angular Planets Analysis")
+        angular_df = analyze_angular_houses(chart_data)
+        if not angular_df.empty:
+            st.dataframe(angular_df, hide_index=True)
+        else:
+            st.warning("No significant angular planets found")
+        
+        st.subheader("Sector Strengths")
+        sector_strengths = calculate_sector_strengths(chart_data)
+        if sector_strengths:
+            st.plotly_chart(create_radar_chart(sector_strengths), use_container_width=True)
+        else:
+            st.warning("No sector strengths calculated")
     
     with col2:
-        try:
-            st.dataframe(pd.DataFrame(astrology_data["planets"]), hide_index=True)
-        except Exception as e:
-            st.error(f"Error displaying planetary data: {e}")
+        st.subheader("Aspect Pattern Analysis")
+        aspect_df = analyze_aspect_patterns(chart_data["aspects"])
+        if not aspect_df.empty:
+            st.dataframe(aspect_df, hide_index=True)
+        else:
+            st.warning("No significant aspect patterns found")
         
+        st.subheader("Planetary Dignities")
+        dignities = pd.DataFrame([
+            {
+                "Planet": p["name"],
+                "Sign": p["sign"],
+                "House": p["house"],
+                "Dignity": p["dignity"],
+                "Effect": PRINCIPLES["planetary_rulers"][p["name"]]["Effects"][0]
+            } for p in chart_data["planets"]
+        ])
+        st.dataframe(dignities, hide_index=True)
+    
+    # Advanced Techniques Section
+    st.header("Advanced Techniques")
+    
+    with st.expander("Planetary Periods (Dasha Analysis)"):
         st.markdown("""
-        **Interpretation Guide:**
-        - **Fast-moving planets** (Moon, Mercury, Venus, Mars): Short-term trends (hours/days)
-        - **Slow-moving planets** (Jupiter, Saturn, Uranus, Neptune, Pluto): Long-term trends (weeks/months)
-        - **Retrograde motion**: Reversal or review of market trends
+        **Current Major Period:** Jupiter-Mercury (Growth through communication sectors)
+        
+        **Sub-Period Focus:** 
+        - Technology (Mercury-ruled)
+        - Banking (Jupiter-ruled)
+        - Expect increased volatility in these sectors
         """)
     
-    st.subheader("Active Planetary Aspects")
-    try:
-        st.dataframe(pd.DataFrame(astrology_data["aspects"]), hide_index=True)
-    except Exception as e:
-        st.error(f"Error displaying aspects: {e}")
-    
-    try:
-        st.image(f"{ASTROSEEK_URL}-aspects.gif?t={int(time.time())}",
-               caption="Current Planetary Aspects", use_column_width=True)
-    except Exception as e:
-        st.error(f"Error loading aspects chart: {e}")
-
-# Market-Astrology correlations with better error handling
-def show_correlations():
-    st.subheader("Real-Time Market-Astrology Correlations")
-    
-    try:
-        correlations = {
-            "Market": ["S&P 500", "Gold", "Oil", "Bitcoin", "Currencies"],
-            "Key Planet": ["Sun/Jupiter", "Moon/Venus", "Mars/Pluto", "Uranus", "Mercury"],
-            "Current Influence": ["Expansion", "Stability", "Volatility", "Innovation", "Communication"],
-            "Trading Strategy": ["Buy growth stocks", "Hold safe assets", "Trade carefully", "Speculate wisely", "Watch news"]
-        }
+    with st.expander("Fixed Star Influences"):
+        st.markdown("""
+        **Regulus at 0° Virgo (10th House):** 
+        - Success followed by dramatic reversal in corporate leadership
         
-        st.dataframe(pd.DataFrame(correlations), hide_index=True)
-    except Exception as e:
-        st.error(f"Error displaying correlations: {e}")
+        **Aldebaran at 10° Gemini (7th House):** 
+        - Important partnerships in tech sector
+        """)
     
-    st.markdown("""
-    **How to Use This Data:**
-    1. Check which planets are strong in current astrology
-    2. See which markets they correlate with
-    3. Combine with technical analysis for trading decisions
-    4. Monitor aspect expiration dates for trend changes
-    """)
-
-# Main app with comprehensive error handling
-def main():
-    st.title("📡 Real-Time Financial Astrology Dashboard")
-    st.markdown("""
-    Combining live market data with current astrological positions for financial timing.
-    Data updates every 5 minutes.
-    """)
-    
-    try:
-        # Get all data
-        data = get_realtime_data()
-        market_data = data.get("market_data", {})
-        astrology_data = data.get("astrology_data", {})
+    with st.expander("Lunar Nodes Analysis"):
+        st.markdown("""
+        **North Node in Taurus (8th House):** 
+        - Karmic direction toward value investing and joint finances
         
-        # Display last update time
-        last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.caption(f"Last updated: {last_update} (Refreshes every 5 minutes)")
-        
-        # Show main content
-        show_market_charts(market_data)
-        show_astrology_data(astrology_data)
-        show_correlations()
-        
-    except Exception as e:
-        st.error(f"Application error: {e}")
+        **South Node in Scorpio (2nd House):** 
+        - Release of old patterns in personal asset management
+        """)
     
     # Sidebar
-    st.sidebar.title("Navigation")
-    st.sidebar.markdown("""
-    - [Market Data](#real-time-market-performance)
-    - [Astrology Data](#current-planetary-positions)
-    - [Correlations](#real-time-market-astrology-correlations)
-    """)
+    st.sidebar.title("Analysis Parameters")
+    analysis_date = st.sidebar.date_input("Select Analysis Date", datetime.now())
+    house_system = st.sidebar.selectbox("House System", ["Placidus", "Koch", "Whole Sign"])
     
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Current Highlights")
-    
-    try:
-        if astrology_data and astrology_data.get("aspects"):
-            # Find strongest aspect
-            strongest_aspect = max(astrology_data["aspects"], 
-                                 key=lambda x: float(x["Orb"].split('°')[0]) if x["Orb"].replace('.','',1).isdigit() else 0)
-            st.sidebar.markdown(f"""
-            **Strongest Aspect Today:**  
-            {strongest_aspect["Planets"]} ({strongest_aspect["Aspect"]})  
-            *{strongest_aspect["Effect"]}*
-            """)
-        
-        if market_data:
-            # Find top gaining market
-            top_market = max(market_data.items(), key=lambda x: x[1].get("change", 0))
-            st.sidebar.markdown(f"""
-            **Top Performing Market:**  
-            {top_market[0]}: {top_market[1].get('change', 0):.2f}%
-            """)
-    except Exception as e:
-        st.sidebar.error(f"Error generating highlights: {e}")
+    st.sidebar.subheader("Financial Astrology Principles")
+    principle = st.sidebar.selectbox("View Principle", list(PRINCIPLES.keys()))
+    st.sidebar.json(PRINCIPLES[principle])
     
     st.sidebar.markdown("---")
     st.sidebar.warning("""
-    **Educational Purpose Only**  
-    Not financial advice. Astrological correlations are experimental.  
-    Always conduct your own research.
+    **Advanced Interpretation Only**  
+    For educational purposes.  
+    Not financial advice.
     """)
 
 if __name__ == "__main__":
