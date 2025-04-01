@@ -25,6 +25,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0"
 ]
 TIMEZONES = pytz.all_timezones
+CURRENT_YEAR = datetime.now().year
 
 MARKET_SECTORS = {
     "Forex": {
@@ -235,7 +236,12 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            birth_date = st.date_input("Birth Date", value=datetime(2000, 1, 1))
+            birth_date = st.date_input(
+                "Birth Date", 
+                value=datetime(2000, 1, 1),
+                min_value=datetime(1900, 1, 1),
+                max_value=datetime(2050, 12, 31)
+            )
         with col2:
             birth_time = st.time_input("Birth Time", value=datetime(2000, 1, 1, 12, 0))
         
@@ -359,9 +365,9 @@ def main():
         with st.expander("Lunar Phases"):
             st.markdown("""
             **Current Moon Phase:** Waxing Crescent (Building momentum)  
-            **Next Full Moon:** 2023-09-29 (Emotional peak)  
+            **Next Full Moon:** {next_full_moon} (Emotional peak)  
             **Trading Strategy:** Accumulate during waxing, distribute during waning
-            """)
+            """.format(next_full_moon=(datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")))
         
         with st.expander("Fixed Stars"):
             st.markdown("""
