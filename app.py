@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 import yfinance as yf
 import time
-from fake_useragent import UserAgent
+import random
 
 # Configure page
 st.set_page_config(
@@ -19,8 +19,11 @@ st.set_page_config(
 
 # Constants
 BASE_URL = "https://www.astro-seek.com"
-USER_AGENT = UserAgent().chrome
-HEADERS = {'User-Agent': USER_AGENT}
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0"
+]
 TIMEZONES = pytz.all_timezones
 
 MARKET_SECTORS = {
@@ -46,6 +49,9 @@ MARKET_SECTORS = {
     }
 }
 
+def get_random_useragent():
+    return random.choice(USER_AGENTS)
+
 # Cache market data
 @st.cache_data(ttl=300)
 def get_market_data(tickers):
@@ -66,6 +72,8 @@ def get_market_data(tickers):
 # Scrape natal chart from AstroSeek
 def get_natal_chart(birth_datetime, city, country):
     try:
+        headers = {'User-Agent': get_random_useragent()}
+        
         # Convert to AstroSeek format
         params = {
             'narozeni_den': birth_datetime.day,
@@ -80,13 +88,14 @@ def get_natal_chart(birth_datetime, city, country):
         
         with requests.Session() as session:
             # Get initial cookies
-            session.get(f"{BASE_URL}/birth-chart", headers=HEADERS)
+            session.get(f"{BASE_URL}/birth-chart", headers=headers)
             
             # Submit form
             response = session.post(
                 f"{BASE_URL}/birth-chart",
                 data=params,
-                headers=HEADERS
+                headers=headers,
+                timeout=10
             )
             
             if response.status_code == 200:
@@ -185,7 +194,7 @@ def find_favorable_times(aspects):
     # Major aspects
     for aspect in aspects:
         planets = aspect["Planets"]
-        orb = float(aspect["Orb"].replace("°", ""))
+        orb = float(aspect["Orb"].replace("°", "").split("'")[0])
         
         if orb < 3:  # Tight orb
             period = {
@@ -311,7 +320,7 @@ def main():
                 ("Venus", "Luxury/relationships"),
                 ("Saturn", "Structure/mining")
             ]
-            current_planet, current_sector = planetary_hours[current_hour // 3.43]  # Approximate
+            current_planet, current_sector = planetary_hours[int(current_hour // 3.43)]  # Approximate
             
             st.markdown(f"""
             **Current Hour Ruler:** {current_planet}  
