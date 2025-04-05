@@ -100,6 +100,11 @@ def get_financial_transits():
         return []
 
 def get_ai_insight(prompt, context=None):
+    # Handle missing API key
+    if 'DEEPSEEK_API_KEY' not in st.secrets:
+        st.error("Missing DeepSeek API key in secrets!")
+        return "Please configure your API key in Streamlit secrets"
+    
     headers = {
         "Authorization": f"Bearer {st.secrets['DEEPSEEK_API_KEY']}",
         "Content-Type": "application/json"
@@ -125,7 +130,7 @@ def get_ai_insight(prompt, context=None):
         response = requests.post(DEEPSEEK_API, headers=headers, json=payload)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
-        return f"API Error: {response.status_code}"
+        return f"API Error: {response.status_code} - {response.text}"
     except Exception as e:
         return f"Connection Error: {str(e)}"
 
