@@ -1,0 +1,2 @@
+# .streamlit/secrets.toml
+DEEPSEEK_API_KEY = "40ecacfa47454b6e9c5caf8067cedea9"
