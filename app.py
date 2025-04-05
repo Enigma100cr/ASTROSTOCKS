@@ -8,377 +8,172 @@ import pytz
 import yfinance as yf
 import time
 import random
+import json
 
 # Configure page
 st.set_page_config(
-    page_title="Cosmic Market Analyst",
-    page_icon="🌌",
+    page_title="Cosmic Market Analyst Pro",
+    page_icon="🌌🚀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Constants
-BASE_URL = "https://www.astro-seek.com"
+BASE_URL = "https://www.astrostocks.com"  # Updated URL
+DEEPSEEK_API = "https://api.deepseek.com/v1/chat/completions"
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0"
 ]
 TIMEZONES = pytz.all_timezones
-CURRENT_YEAR = datetime.now().year
 
-MARKET_SECTORS = {
-    "Forex": {
-        "tickers": ["EURUSD=X", "USDINR=X", "GBPUSD=X", "USDJPY=X"],
-        "rulers": ["Mercury", "Venus"],
-        "houses": ["2nd", "8th"]
-    },
-    "Indian Market": {
-        "tickers": ["^NSEI", "^BSESN", "RELIANCE.NS", "TATASTEEL.NS"],
-        "rulers": ["Moon", "Mars"],
-        "houses": ["4th", "10th"]
-    },
-    "Crypto": {
-        "tickers": ["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD"],
-        "rulers": ["Uranus", "Pluto"],
-        "houses": ["11th", "8th"]
-    },
-    "Global Markets": {
-        "tickers": ["^GSPC", "^DJI", "^IXIC", "^FTSE"],
-        "rulers": ["Sun", "Jupiter", "Saturn"],
-        "houses": ["10th", "9th", "12th"]
-    }
-}
+# Initialize session state
+if "ai_history" not in st.session_state:
+    st.session_state.ai_history = []
 
 def get_random_useragent():
     return random.choice(USER_AGENTS)
 
-# Cache market data
-@st.cache_data(ttl=300)
-def get_market_data(tickers):
-    data = {}
-    for ticker in tickers:
-        try:
-            df = yf.download(ticker, period="1d", progress=False)
-            if not df.empty:
-                data[ticker] = {
-                    "price": round(df['Close'].iloc[-1], 2),
-                    "change": round((df['Close'].iloc[-1]/df['Open'].iloc[-1]-1)*100, 2),
-                    "volume": int(df['Volume'].iloc[-1])
-                }
-        except Exception as e:
-            st.error(f"Error fetching {ticker}: {str(e)}")
-    return data
+# DeepSeek AI Integration
+def get_ai_insight(prompt, chart_data=None, market_data=None):
+    headers = {
+        "Authorization": f"Bearer {st.secrets['DEEPSEEK_API_KEY']}",
+        "Content-Type": "application/json"
+    }
+    
+    system_msg = """You are a financial astrologer AI assistant. Analyze the given astrological chart data 
+    and market conditions to provide strategic trading insights. Combine planetary positions, aspects, 
+    and current market data to make predictions. Be specific about sectors, timing, and risk management."""
+    
+    user_content = f"User Query: {prompt}\n\nChart Data: {json.dumps(chart_data)}\nMarket Data: {market_data}"
+    
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_content}
+        ],
+        "temperature": 0.7
+    }
+    
+    try:
+        response = requests.post(DEEPSEEK_API, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content']
+        return "Error: Failed to get AI response"
+    except Exception as e:
+        return f"API Error: {str(e)}"
 
-# Scrape natal chart from AstroSeek
-def get_natal_chart(birth_datetime, city, country):
+# Enhanced AstroStocks Scraper
+def get_financial_transits():
     try:
         headers = {'User-Agent': get_random_useragent()}
+        response = requests.get(f"{BASE_URL}/daily-transits", headers=headers, timeout=10)
         
-        # Convert to AstroSeek format
-        params = {
-            'narozeni_den': birth_datetime.day,
-            'narozeni_mesic': birth_datetime.month,
-            'narozeni_rok': birth_datetime.year,
-            'narozeni_hodina': birth_datetime.hour,
-            'narozeni_minuta': birth_datetime.minute,
-            'narozeni_mesto': city,
-            'narozeni_zeme': country,
-            'submit': 'Calculate'
-        }
-        
-        with requests.Session() as session:
-            # Get initial cookies
-            session.get(f"{BASE_URL}/birth-chart", headers=headers)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            transits = []
             
-            # Submit form
-            response = session.post(
-                f"{BASE_URL}/birth-chart",
-                data=params,
-                headers=headers,
-                timeout=10
-            )
+            # Extract transit information
+            transit_cards = soup.find_all('div', class_='transit-card')
+            for card in transit_cards[:5]:  # Get top 5 transits
+                title = card.find('h3').text.strip()
+                description = card.find('div', class_='description').text.strip()
+                impact = card.find('span', class_='impact').text.strip()
+                
+                transits.append({
+                    "title": title,
+                    "description": description,
+                    "impact": impact
+                })
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Extract planetary positions
-                planets = []
-                planet_table = soup.find('table', {'id': 'tab_planety'})
-                if planet_table:
-                    for row in planet_table.find_all('tr')[1:12]:  # Skip header and include up to Pluto
-                        cols = row.find_all('td')
-                        if len(cols) >= 7:
-                            planets.append({
-                                "Planet": cols[0].text.strip(),
-                                "Sign": cols[1].text.strip(),
-                                "Degree": cols[2].text.strip(),
-                                "House": cols[6].text.strip(),
-                                "Speed": cols[3].text.strip()
-                            })
-                
-                # Extract aspects
-                aspects = []
-                aspect_table = soup.find('table', {'id': 'tab_aspekty'})
-                if aspect_table:
-                    for row in aspect_table.find_all('tr')[1:6]:  # Top 5 aspects
-                        cols = row.find_all('td')
-                        if len(cols) >= 4:
-                            aspects.append({
-                                "Planets": cols[0].text.strip(),
-                                "Aspect": cols[1].text.strip(),
-                                "Orb": cols[2].text.strip(),
-                                "Effect": cols[3].text.strip()[:100] + "..."
-                            })
-                
-                return {
-                    "planets": planets,
-                    "aspects": aspects,
-                    "valid": True,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "chart_url": response.url
-                }
-            else:
-                return {"valid": False, "error": f"HTTP {response.status_code}"}
+            return transits
+        return []
     except Exception as e:
-        return {"valid": False, "error": str(e)}
+        st.error(f"Transit Scraping Error: {str(e)}")
+        return []
 
-# Calculate planetary strengths
-def calculate_planetary_strengths(planets):
-    strengths = {}
-    for planet in planets:
-        name = planet["Planet"]
-        strength = 1
-        
-        # House weighting
-        if planet["House"] in ["1st", "4th", "7th", "10th"]:  # Angular
-            strength *= 2
-        elif planet["House"] in ["2nd", "5th", "8th", "11th"]:  # Succedent
-            strength *= 1.5
-        
-        # Sign dignity
-        if name == "Sun" and planet["Sign"] == "Leo":
-            strength *= 2
-        elif name == "Moon" and planet["Sign"] == "Cancer":
-            strength *= 2
-        # Add other essential dignities...
-        
-        strengths[name] = round(strength, 2)
+# Real-time Market Data with AI Analysis
+@st.cache_data(ttl=60)
+def get_ai_enhanced_market_data(sector):
+    tickers = MARKET_SECTORS[sector]["tickers"]
+    data = yf.download(tickers, period="1d", group_by='ticker')
     
-    return strengths
-
-# Analyze favorable sectors
-def analyze_sectors(planets, aspects):
-    sector_scores = {sector: 0 for sector in MARKET_SECTORS}
-    
-    # Calculate based on planetary rulers
-    planetary_strengths = calculate_planetary_strengths(planets)
-    
-    for sector, data in MARKET_SECTORS.items():
-        for ruler in data["rulers"]:
-            if ruler in planetary_strengths:
-                sector_scores[sector] += planetary_strengths[ruler]
-        
-        # Check if any planets are in relevant houses
-        for planet in planets:
-            if planet["House"] in data["houses"]:
-                sector_scores[sector] += planetary_strengths.get(planet["Planet"], 1)
-    
-    # Normalize scores
-    max_score = max(sector_scores.values()) if any(sector_scores.values()) else 1
-    return {k: round(v/max_score, 2) for k, v in sector_scores.items()}
-
-# Find favorable times
-def find_favorable_times(aspects):
-    favorable_periods = []
-    
-    # Major aspects
-    for aspect in aspects:
-        planets = aspect["Planets"]
-        orb = float(aspect["Orb"].replace("°", "").split("'")[0])
-        
-        if orb < 3:  # Tight orb
-            period = {
-                "Aspect": f"{planets} {aspect['Aspect']}",
-                "Orb": aspect["Orb"],
-                "Effect": aspect["Effect"],
-                "Duration": "1-3 days",
-                "Priority": "High" if "Sun" in planets or "Moon" in planets else "Medium"
-            }
-            favorable_periods.append(period)
-    
-    return favorable_periods
-
-# Visualization
-def create_sector_radar(sector_scores):
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=list(sector_scores.values()),
-        theta=list(sector_scores.keys()),
-        fill='toself',
-        name='Sector Strength'
-    ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-        title="Market Sector Strength Analysis",
-        height=500
+    analysis = get_ai_insight(
+        f"Analyze current {sector} market conditions and predict next 24 hours trends",
+        market_data=data.to_dict()
     )
-    return fig
+    
+    return {
+        "prices": data[-1:].to_dict(),
+        "analysis": analysis
+    }
 
-# Main app
+# Modified Main App Structure
 def main():
-    st.title("🌌 Cosmic Market Analyst")
-    st.markdown("### Financial Astrology for Strategic Trading")
+    st.title("🚀 AI Cosmic Market Analyst Pro")
+    st.markdown("### AI-Powered Financial Astrology Platform")
     
-    # Sidebar inputs
+    # Sidebar - AI Chat Interface
     with st.sidebar:
-        st.header("Natal Chart Data")
+        st.header("AI Astro Advisor")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            birth_date = st.date_input(
-                "Birth Date", 
-                value=datetime(2000, 1, 1),
-                min_value=datetime(1900, 1, 1),
-                max_value=datetime(2050, 12, 31)
-            )
-        with col2:
-            birth_time = st.time_input("Birth Time", value=datetime(2000, 1, 1, 12, 0))
+        user_input = st.text_input("Ask market prediction:", key="ai_input")
+        if user_input:
+            with st.spinner("Consulting the stars..."):
+                chart_data = st.session_state.get("chart_data")
+                market_data = get_market_data()
+                response = get_ai_insight(user_input, chart_data, market_data)
+                st.session_state.ai_history.append(
+                    {"user": user_input, "ai": response}
+                )
         
-        birth_datetime = datetime.combine(birth_date, birth_time)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            city = st.text_input("City", "Mumbai")
-        with col2:
-            country = st.text_input("Country", "India")
-        
-        timezone = st.selectbox("Timezone", TIMEZONES, index=TIMEZONES.index("Asia/Kolkata"))
-        
-        if st.button("Analyze Natal Chart"):
-            with st.spinner("Calculating planetary positions..."):
-                result = get_natal_chart(birth_datetime, city, country)
-                if result["valid"]:
-                    st.session_state["chart_data"] = result
-                    st.success("Chart calculated successfully!")
-                else:
-                    st.error(f"Error: {result.get('error', 'Unknown error')}")
+        for entry in reversed(st.session_state.ai_history[-5:]):
+            st.markdown(f"**You**: {entry['user']}")
+            st.markdown(f"**AI**: {entry['ai']}")
+            st.divider()
     
-    # Main display
-    if "chart_data" in st.session_state:
-        chart_data = st.session_state["chart_data"]
-        
-        # Display chart info
-        st.header("Natal Chart Analysis")
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.subheader("Planetary Positions")
-            st.dataframe(
-                pd.DataFrame(chart_data["planets"]),
-                hide_index=True,
-                use_container_width=True
-            )
-        
-        with col2:
-            st.subheader("Major Aspects")
-            st.dataframe(
-                pd.DataFrame(chart_data["aspects"]),
-                hide_index=True,
-                use_container_width=True
-            )
-        
-        # Market Analysis
-        st.header("Market Sector Analysis")
-        sector_scores = analyze_sectors(chart_data["planets"], chart_data["aspects"])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(
-                create_sector_radar(sector_scores),
-                use_container_width=True
-            )
-        with col2:
-            st.subheader("Sector Recommendations")
-            for sector, score in sorted(sector_scores.items(), key=lambda x: x[1], reverse=True):
-                st.progress(score, text=f"{sector}: {score:.0%} favorable")
-        
-        # Favorable Times
-        st.header("Favorable Trading Times")
-        favorable_times = find_favorable_times(chart_data["aspects"])
-        
-        if favorable_times:
-            st.dataframe(
-                pd.DataFrame(favorable_times),
-                hide_index=True,
-                use_container_width=True
-            )
-            
-            # Current transits
-            st.subheader("Current Planetary Hours")
-            current_hour = (datetime.now().hour + 1) % 24
-            planetary_hours = [
-                ("Sun", "Leadership assets"),
-                ("Moon", "Emotional markets"),
-                ("Mars", "Energy/defense"),
-                ("Mercury", "Tech/communication"),
-                ("Jupiter", "Banking/expansion"),
-                ("Venus", "Luxury/relationships"),
-                ("Saturn", "Structure/mining")
-            ]
-            current_planet, current_sector = planetary_hours[int(current_hour // 3.43)]  # Approximate
-            
-            st.markdown(f"""
-            **Current Hour Ruler:** {current_planet}  
-            **Focus Sectors:** {current_sector}  
-            **Next Change:** In {(3.43 - (current_hour % 3.43)):.1f} hours
-            """)
+    # Main Interface
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.header("Planetary Transits")
+        transits = get_financial_transits()
+        if transits:
+            for transit in transits:
+                with st.expander(transit["title"]):
+                    st.markdown(f"""
+                    **Impact**: {transit["impact"]}  
+                    **Description**: {transit["description"]}
+                    """)
         else:
-            st.warning("No strong favorable periods detected")
-        
-        # Market Data
-        st.header("Current Market Conditions")
-        for sector, data in MARKET_SECTORS.items():
-            with st.expander(f"{sector} Market"):
-                market_data = get_market_data(data["tickers"])
-                cols = st.columns(len(market_data))
-                for idx, (ticker, values) in enumerate(market_data.items()):
-                    with cols[idx]:
-                        st.metric(
-                            label=ticker,
-                            value=f"${values['price']:,}",
-                            delta=f"{values['change']:.2f}%",
-                            help=f"Volume: {values['volume']:,}"
-                        )
-        
-        # Advanced Techniques
-        st.header("Advanced Techniques")
-        
-        with st.expander("Planetary Transits"):
-            st.markdown("""
-            **Current Transits:**
-            - Jupiter in Taurus: Favorable for commodities
-            - Saturn in Pisces: Caution in liquid assets
-            - Pluto in Aquarius: Tech transformations
-            """)
-        
-        with st.expander("Lunar Phases"):
-            st.markdown("""
-            **Current Moon Phase:** Waxing Crescent (Building momentum)  
-            **Next Full Moon:** {next_full_moon} (Emotional peak)  
-            **Trading Strategy:** Accumulate during waxing, distribute during waning
-            """.format(next_full_moon=(datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")))
-        
-        with st.expander("Fixed Stars"):
-            st.markdown("""
-            **Regulus (29° Leo):** Success with risk of downfall  
-            **Aldebaran (10° Gemini):** Financial partnerships  
-            **Antares (10° Sagittarius):** Volatile opportunities
-            """)
+            st.warning("Could not retrieve transit data")
     
-    else:
-        st.warning("Please generate a natal chart using the sidebar inputs")
-        st.image("https://www.astro-seek.com/birth-chart/horoscope-wheel.gif", width=500)
+    with col2:
+        st.header("AI Market Analysis")
+        selected_sector = st.selectbox("Select Sector", list(MARKET_SECTORS.keys()))
+        
+        if st.button("Run Deep Analysis"):
+            with st.spinner("Analyzing cosmic patterns..."):
+                sector_data = get_ai_enhanced_market_data(selected_sector)
+                
+                st.subheader("Price Data")
+                st.dataframe(pd.DataFrame(sector_data["prices"]))
+                
+                st.subheader("AI Prediction")
+                st.markdown(sector_data["analysis"])
+                
+                # Generate visual
+                fig = go.Figure()
+                for ticker in MARKET_SECTORS[selected_sector]["tickers"]:
+                    fig.add_trace(go.Scatter(
+                        x=sector_data["prices"].index,
+                        y=sector_data["prices"][ticker]["Close"],
+                        name=ticker
+                    ))
+                st.plotly_chart(fig)
 
+# Run the app
 if __name__ == "__main__":
     main()
