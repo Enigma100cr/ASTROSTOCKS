@@ -9,5 +9,7 @@ tf-keras
 torch
 beautifulsoup4 
 pandas 
-plotly fp.fp 
-free-proxy pytz
+plotly 
+fp.fp 
+free-proxy 
+pytz
