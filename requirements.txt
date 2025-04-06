@@ -7,3 +7,7 @@ transformers
 TensorFlow
 tf-keras
 torch
+beautifulsoup4 
+pandas 
+plotly fp.fp 
+free-proxy pytz
